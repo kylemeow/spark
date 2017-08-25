@@ -32,6 +32,8 @@ import org.apache.spark.util.NextIterator
  * create [[org.apache.spark.serializer.SerializerInstance]] objects that do the actual
  * serialization and are guaranteed to only be called from one thread at a time.
  *
+ * 确保线程安全
+ *
  * Implementations of this trait should implement:
  *
  * 1. a zero-arg constructor or a constructor that accepts a [[org.apache.spark.SparkConf]]

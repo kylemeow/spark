@@ -53,7 +53,7 @@ import org.apache.spark.shuffle.ShuffleWriter
 private[spark] class ShuffleMapTask(
     stageId: Int,
     stageAttemptId: Int,
-    taskBinary: Broadcast[Array[Byte]],
+    taskBinary: Broadcast[Array[Byte]],  // RDD 和 ShuffleDependency 的广播版本，反序列化后类型是 (RDD[_], ShuffleDependency[_, _, _])
     partition: Partition,
     @transient private var locs: Seq[TaskLocation],
     localProperties: Properties,
@@ -75,15 +75,19 @@ private[spark] class ShuffleMapTask(
   }
 
   override def runTask(context: TaskContext): MapStatus = {
-    // Deserialize the RDD using the broadcast variable.
-    val threadMXBean = ManagementFactory.getThreadMXBean
+
+    // 时间相关
+    val threadMXBean = ManagementFactory.getThreadMXBean  // 用于之后获取本线程所用 CPU 时间
     val deserializeStartTime = System.currentTimeMillis()
     val deserializeStartCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime
     } else 0L
-    val ser = SparkEnv.get.closureSerializer.newInstance()
+
+    // 使用广播变量反序列化 RDD
+    val ser = SparkEnv.get.closureSerializer.newInstance()  // 获取一个 closureSerializer 实例
     val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[_, _, _])](
-      ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
+      ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)  // 需要当前线程的 ClassLoader 来载入对象实现反序列化
+
     _executorDeserializeTime = System.currentTimeMillis() - deserializeStartTime
     _executorDeserializeCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
@@ -91,8 +95,8 @@ private[spark] class ShuffleMapTask(
 
     var writer: ShuffleWriter[Any, Any] = null
     try {
-      val manager = SparkEnv.get.shuffleManager
-      writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
+      val manager = SparkEnv.get.shuffleManager  // 获取 shuffle manager
+      writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)  // 根据参数得到某个 partition 的 shuffle writer
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
       writer.stop(success = true).get
     } catch {
