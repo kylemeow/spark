@@ -280,12 +280,13 @@ abstract class RDD[T: ClassTag](
    * Internal method to this RDD; will read from cache if applicable, or otherwise compute it.
    * This should ''not'' be called by users directly, but is available for implementors of custom
    * subclasses of RDD.
+    * 比较核心的方法
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
-    if (storageLevel != StorageLevel.NONE) {
-      getOrCompute(split, context)
+    if (storageLevel != StorageLevel.NONE) { // 若有缓存就不用计算了
+      getOrCompute(split, context)   // 这个函数很有用，可以深入研究
     } else {
-      computeOrReadCheckpoint(split, context)
+      computeOrReadCheckpoint(split, context)   // 若虽然没有缓存，但有 Checkpoint 也不用计算了
     }
   }
 
@@ -329,9 +330,10 @@ abstract class RDD[T: ClassTag](
    * Gets or computes an RDD partition. Used by RDD.iterator() when an RDD is cached.
    */
   private[spark] def getOrCompute(partition: Partition, context: TaskContext): Iterator[T] = {
-    val blockId = RDDBlockId(id, partition.index)
+    val blockId = RDDBlockId(id, partition.index)   // 获取 RDD 的 BlockID
     var readCachedBlock = true
     // This method is called on executors, so we need call SparkEnv.get instead of sc.env.
+    // Either 就像 Option，只是在出错时可以提供一些反馈信息
     SparkEnv.get.blockManager.getOrElseUpdate(blockId, storageLevel, elementClassTag, () => {
       readCachedBlock = false
       computeOrReadCheckpoint(partition, context)
@@ -349,7 +351,7 @@ abstract class RDD[T: ClassTag](
         } else {
           new InterruptibleIterator(context, blockResult.data.asInstanceOf[Iterator[T]])
         }
-      case Right(iter) =>
+      case Right(iter) =>  // 由于各种原因失败了
         new InterruptibleIterator(context, iter.asInstanceOf[Iterator[T]])
     }
   }

@@ -54,16 +54,16 @@ import org.apache.spark.util.{RpcUtils, Utils}
  *       in a future release.
  */
 @DeveloperApi
-class SparkEnv (
+class SparkEnv (    // SparkContext 创建后就可以访问 SparkEnv
     val executorId: String,
     private[spark] val rpcEnv: RpcEnv,
-    val serializer: Serializer,
+    val serializer: Serializer,   // 用于序列化和反序列化
     val closureSerializer: Serializer,
     val serializerManager: SerializerManager,
     val mapOutputTracker: MapOutputTracker,
-    val shuffleManager: ShuffleManager,
+    val shuffleManager: ShuffleManager,   // 默认是 SortShuffleManager
     val broadcastManager: BroadcastManager,
-    val blockManager: BlockManager,
+    val blockManager: BlockManager,   // Storage 模块提供的 block 管理，而 block 与 partition 有对应关系
     val securityManager: SecurityManager,
     val metricsSystem: MetricsSystem,
     val memoryManager: MemoryManager,

@@ -30,12 +30,11 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.shuffle.ShuffleWriter
 
 /**
- * A ShuffleMapTask divides the elements of an RDD into multiple buckets (based on a partitioner
- * specified in the ShuffleDependency).
+ * ShuffleMapTask 作用是根据 ShuffleDependency 中指定的 partitioner，把 RDD 的元素分为很多 buckets
  *
  * See [[org.apache.spark.scheduler.Task]] for more information.
  *
- * @param stageId id of the stage this task belongs to
+ * @param stageId 任务所属的 stage id
  * @param stageAttemptId attempt id of the stage this task belongs to
  * @param taskBinary broadcast version of the RDD and the ShuffleDependency. Once deserialized,
  *                   the type should be (RDD[_], ShuffleDependency[_, _, _]).
@@ -53,7 +52,7 @@ import org.apache.spark.shuffle.ShuffleWriter
 private[spark] class ShuffleMapTask(
     stageId: Int,
     stageAttemptId: Int,
-    taskBinary: Broadcast[Array[Byte]],  // RDD 和 ShuffleDependency 的广播版本，反序列化后类型是 (RDD[_], ShuffleDependency[_, _, _])
+    taskBinary: Broadcast[Array[Byte]],  // RDD 和 ShuffleDependency 的广播变量版本，反序列化后类型是 (RDD[_], ShuffleDependency[_, _, _])
     partition: Partition,
     @transient private var locs: Seq[TaskLocation],
     localProperties: Properties,
@@ -74,6 +73,7 @@ private[spark] class ShuffleMapTask(
     if (locs == null) Nil else locs.toSet.toSeq
   }
 
+  // 开始执行 Task，计算的起点
   override def runTask(context: TaskContext): MapStatus = {
 
     // 时间相关
@@ -83,11 +83,12 @@ private[spark] class ShuffleMapTask(
       threadMXBean.getCurrentThreadCpuTime
     } else 0L
 
-    // 使用广播变量反序列化 RDD
+    // 把广播变量反序列化为 RDD
     val ser = SparkEnv.get.closureSerializer.newInstance()  // 获取一个 closureSerializer 实例
     val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[_, _, _])](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)  // 需要当前线程的 ClassLoader 来载入对象实现反序列化
 
+    // 计算所用的时间
     _executorDeserializeTime = System.currentTimeMillis() - deserializeStartTime
     _executorDeserializeCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
@@ -95,15 +96,15 @@ private[spark] class ShuffleMapTask(
 
     var writer: ShuffleWriter[Any, Any] = null
     try {
-      val manager = SparkEnv.get.shuffleManager  // 获取 shuffle manager
+      val manager = SparkEnv.get.shuffleManager  // 获取 ShuffleManager，这里是 SortShuffleManager
       writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)  // 根据参数得到某个 partition 的 shuffle writer
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
-      writer.stop(success = true).get
+      writer.stop(success = true).get   // stop 的返回值是 Option[MapStatus]
     } catch {
       case e: Exception =>
         try {
           if (writer != null) {
-            writer.stop(success = false)
+            writer.stop(success = false)    // 关闭 writer，并且告知 map 操作未完成
           }
         } catch {
           case e: Exception =>
