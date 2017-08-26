@@ -78,7 +78,7 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
 
   override def rdd: RDD[Product2[K, V]] = _rdd.asInstanceOf[RDD[Product2[K, V]]]
 
-  private[spark] val keyClassName: String = reflect.classTag[K].runtimeClass.getName
+  private[spark] val keyClassName: String = reflect.classTag[K].runtimeClass.getName   // 通过这样从 classTag 运行时动态得到 className
   private[spark] val valueClassName: String = reflect.classTag[V].runtimeClass.getName
   // Note: It's possible that the combiner class tag is null, if the combineByKey
   // methods in PairRDDFunctions are used instead of combineByKeyWithClassTag.

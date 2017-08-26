@@ -454,7 +454,7 @@ abstract class RDD[T: ClassTag](
           position = position + 1
           (position, t)
         }
-      } : Iterator[(Int, T)]
+      } : Iterator[(Int, T)]  // 返回 Iterator[(Int, T)] 类型
 
       // include a shuffle step so that our upstream tasks are still distributed
       new CoalescedRDD(
