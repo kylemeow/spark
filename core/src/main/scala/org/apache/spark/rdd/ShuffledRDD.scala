@@ -100,20 +100,21 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag]
   override val partitioner = Some(part)
 
   override def getPartitions: Array[Partition] = {
-    Array.tabulate[Partition](part.numPartitions)(i => new ShuffledRDDPartition(i))
+    Array.tabulate[Partition](part.numPartitions)(i => new ShuffledRDDPartition(i))  // Array.tabulate 生成从 0 ~ numPartitions-1 的 index 并依次传入函数，不用 for 循环了。ShuffledRDDPartition 根据 id 得到对应 partition
   }
 
   override protected def getPreferredLocations(partition: Partition): Seq[String] = {
-    val tracker = SparkEnv.get.mapOutputTracker.asInstanceOf[MapOutputTrackerMaster]
+    val tracker = SparkEnv.get.mapOutputTracker.asInstanceOf[MapOutputTrackerMaster]   //  mapOutputTracker keeps track of the location of the map output of a stage
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
     tracker.getPreferredLocationsForShuffle(dep, partition.index)
   }
 
-  override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
+  // To compute a given partition
+  override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {   // 调用 reader 返回的是一个 Iterator
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
     SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle, split.index, split.index + 1, context)
       .read()
-      .asInstanceOf[Iterator[(K, C)]]
+      .asInstanceOf[Iterator[(K, C)]]  // TODO: 何时 K, V，何时又 K, C？
   }
 
   override def clearDependencies() {

@@ -39,6 +39,9 @@ import org.apache.spark.util.Utils
  * as the filename postfix for data file, and ".index" as the filename postfix for index file.
  *
  */
+
+// TODO: 这个文件非常重要，负责提供 block id 和物理文件（或者文件组）的对应关系，一定要看懂
+
 // Note: Changes to the format in this file should be kept in sync with
 // org.apache.spark.network.shuffle.ExternalShuffleBlockResolver#getSortBasedShuffleBlockData().
 private[spark] class IndexShuffleBlockResolver(
@@ -47,23 +50,24 @@ private[spark] class IndexShuffleBlockResolver(
   extends ShuffleBlockResolver
   with Logging {
 
-  private lazy val blockManager = Option(_blockManager).getOrElse(SparkEnv.get.blockManager)
+  private lazy val blockManager = Option(_blockManager).getOrElse(SparkEnv.get.blockManager)   // lazy 这点很好玩啊，用到了临时再算。另外这种 Option.getOrElse 用法可以省去很多判断代码，真心简洁
 
-  private val transportConf = SparkTransportConf.fromSparkConf(conf, "shuffle")
+  private val transportConf = SparkTransportConf.fromSparkConf(conf, "shuffle")   // 为了通过 Netty 等通过网络传输 SparkConf，第二个参数是 module
 
+  // 数据文件和索引（index）文件是分开放的。返回的是 Java 原生的 File 对象。根据 shuffleBlockId 和 mapId 就可以找到这个文件啦
   def getDataFile(shuffleId: Int, mapId: Int): File = {
-    blockManager.diskBlockManager.getFile(ShuffleDataBlockId(shuffleId, mapId, NOOP_REDUCE_ID))
+    blockManager.diskBlockManager.getFile(ShuffleDataBlockId(shuffleId, mapId, NOOP_REDUCE_ID))  // 只是返回个文件名罢了："shuffle_" + shuffleId + "_" + mapId + "_" + reduceId + ".data"
   }
 
   private def getIndexFile(shuffleId: Int, mapId: Int): File = {
-    blockManager.diskBlockManager.getFile(ShuffleIndexBlockId(shuffleId, mapId, NOOP_REDUCE_ID))
+    blockManager.diskBlockManager.getFile(ShuffleIndexBlockId(shuffleId, mapId, NOOP_REDUCE_ID)) // 只是返回个文件名罢了："shuffle_" + shuffleId + "_" + mapId + "_" + reduceId + ".index"
   }
 
   /**
-   * Remove data file and index file that contain the output data from one map.
+   * Remove data file and index file that contain the output data from one map. 根据 mapId 和 shuffleId 删除两个文件，好简单啊
    * */
   def removeDataByMap(shuffleId: Int, mapId: Int): Unit = {
-    var file = getDataFile(shuffleId, mapId)
+    var file = getDataFile(shuffleId, mapId)  // 真好用啊，类型推断，不用显式声明类型了
     if (file.exists()) {
       if (!file.delete()) {
         logWarning(s"Error deleting data ${file.getPath()}")
@@ -83,28 +87,31 @@ private[spark] class IndexShuffleBlockResolver(
    * If so, return the partition lengths in the data file. Otherwise return null.
    */
   private def checkIndexAndDataFile(index: File, data: File, blocks: Int): Array[Long] = {
-    // the index file should have `block + 1` longs as offset.
+    // the index file should have `block + 1` longs as offset. 先从最简单的判断开始
     if (index.length() != (blocks + 1) * 8) {
-      return null
+      return null     // null 就是 index 和 data 不 match
     }
-    val lengths = new Array[Long](blocks)
+    val lengths = new Array[Long](blocks)   // 根据 block 数目建立 length 数组，里面是每个 block / partition 的长度
+
     // Read the lengths of blocks
     val in = try {
-      new DataInputStream(new NioBufferedFileInputStream(index))
+      new DataInputStream(new NioBufferedFileInputStream(index))  // Index 是 File 对象
     } catch {
       case e: IOException =>
         return null
     }
+
     try {
-      // Convert the offsets into lengths of each block
+      // 将各个偏移量 offset 转为每个 block 的长度数据
       var offset = in.readLong()
-      if (offset != 0L) {
+      if (offset != 0L) {  // 第一个 block 的偏移量当然是 0，如果不是说明文件结构错了
         return null
       }
+
       var i = 0
       while (i < blocks) {
         val off = in.readLong()
-        lengths(i) = off - offset
+        lengths(i) = off - offset   // 这么简单啊。就是一个一个 block 的偏移量数据依次存放，没什么复杂结构
         offset = off
         i += 1
       }
@@ -115,7 +122,7 @@ private[spark] class IndexShuffleBlockResolver(
       in.close()
     }
 
-    // the size of data file should match with index file
+    // the size of data file should match with index file 各种条件判断，任何一步出错都说明文件格式不对
     if (data.length() == lengths.sum) {
       lengths
     } else {
@@ -129,7 +136,7 @@ private[spark] class IndexShuffleBlockResolver(
    * begins and ends.
    *
    * It will commit the data and index file as an atomic operation, use the existing ones, or
-   * replace them with new ones.
+   * replace them with new ones. 如果存在 index 文件且符合要求，就使用现有的，否则替换成最新的
    *
    * Note: the `lengths` will be updated to match the existing index file if use the existing ones.
    * */
@@ -137,12 +144,12 @@ private[spark] class IndexShuffleBlockResolver(
       shuffleId: Int,
       mapId: Int,
       lengths: Array[Long],
-      dataTmp: File): Unit = {
-    val indexFile = getIndexFile(shuffleId, mapId)
-    val indexTmp = Utils.tempFileWith(indexFile)
-    try {
-      val out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(indexTmp)))
-      Utils.tryWithSafeFinally {
+      dataTmp: File): Unit = {  // 注意传入的是 dataTmp 临时文件
+    val indexFile = getIndexFile(shuffleId, mapId)   // 得到要写入的 Index File 对象
+    val indexTmp = Utils.tempFileWith(indexFile)     // 在相同目录下创建一个临时文件  new File(indexFile.getAbsolutePath + "." + UUID.randomUUID())
+    try {  // 注意这里写入的是 indexTmp，不是最终文件
+      val out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(indexTmp)))   // Java 常见的嵌套流结构
+      Utils.tryWithSafeFinally {  // 这个函数非常有用，对于写入文件时尽量用它，避免 out.write 抛出异常后 out.close 也发生异常从而掩盖了之前的异常信息。TODO: Scala 这种传入代码块的表示方法太棒了
         // We take in lengths of each block, need to convert it to offsets.
         var offset = 0L
         out.writeLong(offset)
@@ -154,20 +161,21 @@ private[spark] class IndexShuffleBlockResolver(
         out.close()
       }
 
-      val dataFile = getDataFile(shuffleId, mapId)
+      val dataFile = getDataFile(shuffleId, mapId)   // 先有 dataFile，然后写入 indexFile，并校验两者是否一致
       // There is only one IndexShuffleBlockResolver per executor, this synchronization make sure
       // the following check and rename are atomic.
+      // TODO: 注意这里需要 synchronized，但其他地方为什么不需要呢？
       synchronized {
         val existingLengths = checkIndexAndDataFile(indexFile, dataFile, lengths.length)
-        if (existingLengths != null) {
+        if (existingLengths != null) {  // 如果先有的 dataFile 和 indexFile 信息一致，并返回了各个 segments 的长度信息，那么就没必要替换先有文件了
           // Another attempt for the same task has already written our map outputs successfully,
           // so just use the existing partition lengths and delete our temporary map outputs.
-          System.arraycopy(existingLengths, 0, lengths, 0, lengths.length)
+          System.arraycopy(existingLengths, 0, lengths, 0, lengths.length)  // 将 existingLengths 数组拷贝到 lengths 数组中。尽量使用系统现有的库而不是自己写 for 循环
           if (dataTmp != null && dataTmp.exists()) {
             dataTmp.delete()
           }
           indexTmp.delete()
-        } else {
+        } else {  // 需要更新 index 和 data 文件
           // This is the first successful attempt in writing the map outputs for this task,
           // so override any existing index and data files with the ones we wrote.
           if (indexFile.exists()) {
@@ -183,7 +191,7 @@ private[spark] class IndexShuffleBlockResolver(
             throw new IOException("fail to rename file " + dataTmp + " to " + dataFile)
           }
         }
-      }
+      }  // synchronized 结束，一气呵成
     } finally {
       if (indexTmp.exists() && !indexTmp.delete()) {
         logError(s"Failed to delete temporary index file at ${indexTmp.getAbsolutePath}")
@@ -191,19 +199,20 @@ private[spark] class IndexShuffleBlockResolver(
     }
   }
 
+  // 这个文件是核心的
   override def getBlockData(blockId: ShuffleBlockId): ManagedBuffer = {
     // The block is actually going to be a range of a single map output file for this map, so
     // find out the consolidated file, then the offset within that from our index
-    val indexFile = getIndexFile(blockId.shuffleId, blockId.mapId)
+    val indexFile = getIndexFile(blockId.shuffleId, blockId.mapId)   // 模式匹配时的参数外部也可以直接访问
 
-    val in = new DataInputStream(new FileInputStream(indexFile))
+    val in = new DataInputStream(new FileInputStream(indexFile))   // TODO: 为什么不需要 Buffer 了？
     try {
-      ByteStreams.skipFully(in, blockId.reduceId * 8)
+      ByteStreams.skipFully(in, blockId.reduceId * 8)    // 跳过 blockId.reduceId * Long 类型长度 8，这是 Google Guava 库提供的功能
       val offset = in.readLong()
       val nextOffset = in.readLong()
-      new FileSegmentManagedBuffer(
+      new FileSegmentManagedBuffer(   // 让 FileSegmentManagedBuffer 负责提取数据，从网络等地方获取
         transportConf,
-        getDataFile(blockId.shuffleId, blockId.mapId),
+        getDataFile(blockId.shuffleId, blockId.mapId),  // 提供文件名和 offset 区间，即可得到数据
         offset,
         nextOffset - offset)
     } finally {

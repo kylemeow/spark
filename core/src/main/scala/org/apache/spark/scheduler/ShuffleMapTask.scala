@@ -31,21 +31,20 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.shuffle.ShuffleWriter
 
 /**
- * A ShuffleMapTask divides the elements of an RDD into multiple buckets (based on a partitioner
- * specified in the ShuffleDependency).
+ * A ShuffleMapTask 的职责是根据 ShuffleDependency 中提供的 partitioner 把 RDD 分为若干 buckets
+  * A ShuffleMapTask executes the task and divides the task output to multiple buckets (based on the task's partitioner
  *
  * See [[org.apache.spark.scheduler.Task]] for more information.
  *
- * @param stageId id of the stage this task belongs to
+ * @param stageId 任务所属的 stage id
  * @param stageAttemptId attempt id of the stage this task belongs to
- * @param taskBinary broadcast version of the RDD and the ShuffleDependency. Once deserialized,
- *                   the type should be (RDD[_], ShuffleDependency[_, _, _]).
+ * @param taskBinary RDD and the ShuffleDependency 序列化后的广播变量版本. 反序列化后的形式是 (RDD[_], ShuffleDependency[_, _, _])
  * @param partition partition of the RDD this task is associated with
  * @param locs preferred task execution locations for locality scheduling
  * @param metrics a `TaskMetrics` that is created at driver side and sent to executor side.
  * @param localProperties copy of thread-local properties set by the user on the driver side.
  *
- * The parameters below are optional:
+ * The parameters below are optional: Optional 的选项就用 Option
  * @param jobId id of the job this task belongs to
  * @param appId id of the app this task belongs to
  * @param appAttemptId attempt id of the app this task belongs to
@@ -58,7 +57,8 @@ private[spark] class ShuffleMapTask(
     @transient private var locs: Seq[TaskLocation],
     metrics: TaskMetrics,
     localProperties: Properties,
-    jobId: Option[Int] = None,
+
+    jobId: Option[Int] = None,    // None 和 Some 对应 Option，而 Nil 是 List 的，不要混淆
     appId: Option[String] = None,
     appAttemptId: Option[String] = None)
   extends Task[MapStatus](stageId, stageAttemptId, partition.index, metrics, localProperties, jobId,
@@ -74,32 +74,38 @@ private[spark] class ShuffleMapTask(
     if (locs == null) Nil else locs.toSet.toSeq
   }
 
-  override def runTask(context: TaskContext): MapStatus = {
-    // Deserialize the RDD using the broadcast variable.
+  override def runTask(context: TaskContext): MapStatus = {  // 由 Scheduler 调用 runTask，返回值 MapStatus 会返回给 Scheduler，然后传给 reduce 部分
+
+    // 统计时间所需的相关变量
     val threadMXBean = ManagementFactory.getThreadMXBean
     val deserializeStartTime = System.currentTimeMillis()
     val deserializeStartCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime
     } else 0L
-    val ser = SparkEnv.get.closureSerializer.newInstance()
+
+    // 根据广播变量把 RDD 反序列化出来
+    val ser = SparkEnv.get.closureSerializer.newInstance()  // TODO: closureSerializer 和普通 serializer 区别何在？好像只是用来检查是否可序列化，具体的操作还是 serializer 做的
     val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[_, _, _])](
-      ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
+      ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)  // 传入当前 Thread 的 ClassLoader，用来反序列化给定的 ByteBuffer 二进制数据
+
+    // 时间统计结束，存入相关变量
     _executorDeserializeTime = System.currentTimeMillis() - deserializeStartTime
     _executorDeserializeCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
     } else 0L
 
+    // 重点在这里
     var writer: ShuffleWriter[Any, Any] = null
     try {
-      val manager = SparkEnv.get.shuffleManager
+      val manager = SparkEnv.get.shuffleManager   // 先得到 ShuffleManager（之前分为 Hash 和 Sort，现在已经合并），再得到 writer 用来写数据（map 阶段是 writer 写数据，reduce 阶段是 reader 读数据）
       writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
-      writer.stop(success = true).get
+      writer.stop(success = true).get   // 关闭 writer，并告知它写入成功，得知 MapStatus：Result returned by a ShuffleMapTask to a scheduler. Includes the block manager address that the task ran on as well as the sizes of outputs for each reducer, for passing on to the reduce tasks.
     } catch {
       case e: Exception =>
         try {
           if (writer != null) {
-            writer.stop(success = false)
+            writer.stop(success = false)   // 出现异常，关闭 writer，并告知失败了
           }
         } catch {
           case e: Exception =>

@@ -30,19 +30,18 @@ import org.apache.spark.{ShuffleDependency, TaskContext}
 private[spark] trait ShuffleManager {
 
   /**
-   * Register a shuffle with the manager and obtain a handle for it to pass to tasks.
+   * 注册 Shuffle，并且返回一个可以传递给 task 的句柄
    */
   def registerShuffle[K, V, C](
       shuffleId: Int,
       numMaps: Int,
       dependency: ShuffleDependency[K, V, C]): ShuffleHandle
 
-  /** Get a writer for a given partition. Called on executors by map tasks. */
+  /** 为一个特定的 partition 得到一个 writer，然后由 executors 在 map 任务阶段调用它。非常重要，Map Task 用 writer，Reduce Task 用 reader */
   def getWriter[K, V](handle: ShuffleHandle, mapId: Int, context: TaskContext): ShuffleWriter[K, V]
 
   /**
-   * Get a reader for a range of reduce partitions (startPartition to endPartition-1, inclusive).
-   * Called on executors by reduce tasks.
+   * 为一个区间的 reduce partitions 得到一个 reader 区间为 [startPartition to endPartition-1]. Executor 会在 reduce 阶段调用它
    */
   def getReader[K, C](
       handle: ShuffleHandle,
@@ -57,7 +56,7 @@ private[spark] trait ShuffleManager {
   def unregisterShuffle(shuffleId: Int): Boolean
 
   /**
-   * Return a resolver capable of retrieving shuffle block data based on block coordinates.
+   * 返回一个根据 block 坐标即可得到 shuffle block 数据的解析器
    */
   def shuffleBlockResolver: ShuffleBlockResolver
 

@@ -1297,7 +1297,7 @@ private[spark] object Utils extends Logging {
    * fail as well. This would then suppress the original/likely more meaningful
    * exception from the original `out.write` call.
    */
-  def tryWithSafeFinally[T](block: => T)(finallyBlock: => Unit): T = {
+  def tryWithSafeFinally[T](block: => T)(finallyBlock: => Unit): T = {   // 可以传入代码块作为函数并执行，有点像模板，函数语言表现力很强
     var originalThrowable: Throwable = null
     try {
       block
