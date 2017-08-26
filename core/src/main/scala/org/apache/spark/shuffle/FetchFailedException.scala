@@ -27,7 +27,7 @@ import org.apache.spark.util.Utils
  *
  * Note that bmAddress can be null.
  */
-private[spark] class FetchFailedException(
+private[spark] class FetchFailedException(   // 这样扩展一个 Exception
     bmAddress: BlockManagerId,
     shuffleId: Int,
     mapId: Int,
@@ -36,13 +36,13 @@ private[spark] class FetchFailedException(
     cause: Throwable = null)
   extends Exception(message, cause) {
 
-  def this(
+  def this(   // 辅助构造函数
       bmAddress: BlockManagerId,
       shuffleId: Int,
       mapId: Int,
       reduceId: Int,
       cause: Throwable) {
-    this(bmAddress, shuffleId, mapId, reduceId, cause.getMessage, cause)
+    this(bmAddress, shuffleId, mapId, reduceId, cause.getMessage, cause)    // 辅助构造函数必须首先调用默认的构造函数或者之前定义的辅助构造函数
   }
 
   def toTaskFailedReason: TaskFailedReason = FetchFailed(bmAddress, shuffleId, mapId, reduceId,

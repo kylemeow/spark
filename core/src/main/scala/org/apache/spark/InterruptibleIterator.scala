@@ -36,7 +36,7 @@ class InterruptibleIterator[+T](val context: TaskContext, val delegate: Iterator
     if (context.isInterrupted) {
       throw new TaskKilledException
     } else {
-      delegate.hasNext
+      delegate.hasNext   // 算是一种代理模式？
     }
   }
 
