@@ -32,7 +32,7 @@ import org.apache.spark.shuffle._
  *
  * Sort-based shuffle has two different write paths for producing its map output files:
  *
- *  - Serialized sorting: used when all three of the following conditions hold:
+ *  - Serialized sorting: used when ALL three of the following conditions hold:
  *    1. The shuffle dependency specifies no aggregation or output ordering.
  *    2. The shuffle serializer supports relocation of serialized values (this is currently
  *       supported by KryoSerializer and Spark SQL's custom serializers).
@@ -50,7 +50,7 @@ import org.apache.spark.shuffle._
  *  - Its sort operates on serialized binary data rather than Java objects, which reduces memory
  *    consumption and GC overheads. This optimization requires the record serializer to have certain
  *    properties to allow serialized records to be re-ordered without requiring deserialization.
- *    See SPARK-4550, where this optimization was first proposed and implemented, for more details.
+ *    See SPARK-4550, where this optimization was first proposed and implemented, for more details. 在序列化状态即可排序
  *
  *  - It uses a specialized cache-efficient sorter ([[ShuffleExternalSorter]]) that sorts
  *    arrays of compressed record pointers and partition ids. By using only 8 bytes of space per
@@ -68,7 +68,7 @@ import org.apache.spark.shuffle._
  */
 private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager with Logging {
 
-  if (!conf.getBoolean("spark.shuffle.spill", true)) {
+  if (!conf.getBoolean("spark.shuffle.spill", true)) {   // spill 选项无效了
     logWarning(
       "spark.shuffle.spill was set to false, but this configuration is ignored as of Spark 1.6+." +
         " Shuffle will continue to spill to disk when necessary.")
@@ -76,10 +76,11 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
 
   /**
    * A mapping from shuffle ids to the number of mappers producing output for those shuffles.
+    * ShuffleId => 产生这些 shuffle 的 Mapper 数的对应关系
    */
-  private[this] val numMapsForShuffle = new ConcurrentHashMap[Int, Int]()
+  private[this] val numMapsForShuffle = new ConcurrentHashMap[Int, Int]()    // 这里用了 ConcurrentHashMap
 
-  override val shuffleBlockResolver = new IndexShuffleBlockResolver(conf)
+  override val shuffleBlockResolver = new IndexShuffleBlockResolver(conf)   // 用来实现 blockId 和实际物理文件的对应关系
 
   /**
    * Register a shuffle with the manager and obtain a handle for it to pass to tasks.
@@ -95,7 +96,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       // together the spilled files, which would happen with the normal code path. The downside is
       // having multiple files open at a time and thus more memory allocated to buffers.
       new BypassMergeSortShuffleHandle[K, V](
-        shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
+        shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K, V, V]])    // 这些 handle 是用来做 match case 的，并没有实际实现
     } else if (SortShuffleManager.canUseSerializedShuffle(dependency)) {
       // Otherwise, try to buffer map outputs in a serialized form, since this is more efficient:
       new SerializedShuffleHandle[K, V](
@@ -181,6 +182,7 @@ private[spark] object SortShuffleManager extends Logging {
    * Helper method for determining whether a shuffle should use an optimized serialized shuffle
    * path or whether it should fall back to the original path that operates on deserialized objects.
    */
+  // 参见文件首部注释中的三个条件
   def canUseSerializedShuffle(dependency: ShuffleDependency[_, _, _]): Boolean = {
     val shufId = dependency.shuffleId
     val numPartitions = dependency.partitioner.numPartitions

@@ -48,6 +48,7 @@ private[spark] class SortShuffleWriter[K, V, C](
   private val writeMetrics = context.taskMetrics().shuffleWriteMetrics
 
   /** Write a bunch of records to this task's output */
+  // 这个方法很重要
   override def write(records: Iterator[Product2[K, V]]): Unit = {
     sorter = if (dep.mapSideCombine) {
       require(dep.aggregator.isDefined, "Map-side combine without Aggregator specified!")
@@ -82,7 +83,7 @@ private[spark] class SortShuffleWriter[K, V, C](
   /** Close this writer, passing along whether the map completed */
   override def stop(success: Boolean): Option[MapStatus] = {
     try {
-      if (stopping) {
+      if (stopping) {    // 如果正处于 stopping 状态，就不参与了
         return None
       }
       stopping = true
