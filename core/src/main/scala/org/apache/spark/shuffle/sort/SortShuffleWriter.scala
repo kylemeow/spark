@@ -50,6 +50,8 @@ private[spark] class SortShuffleWriter[K, V, C](
   /** Write a bunch of records to this task's output */
   // 这个方法很重要
   override def write(records: Iterator[Product2[K, V]]): Unit = {
+    // 如果指定的 map-side combine，那么必须同时指定 aggregator.
+    // 如果有 aggregator，那么需要传入 keyOrdering，这样排序后归并更快
     sorter = if (dep.mapSideCombine) {
       require(dep.aggregator.isDefined, "Map-side combine without Aggregator specified!")
       new ExternalSorter[K, V, C](
@@ -58,7 +60,7 @@ private[spark] class SortShuffleWriter[K, V, C](
       // In this case we pass neither an aggregator nor an ordering to the sorter, because we don't
       // care whether the keys get sorted in each partition; that will be done on the reduce side
       // if the operation being run is sortByKey.
-      new ExternalSorter[K, V, V](
+      new ExternalSorter[K, V, V](   // 如果没有指定 aggregator，那么 V 和 C 是相等的
         context, aggregator = None, Some(dep.partitioner), ordering = None, dep.serializer)
     }
     sorter.insertAll(records)

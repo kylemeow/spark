@@ -54,16 +54,16 @@ object Partitioner {
    *
    * We use two method parameters (rdd, others) to enforce callers passing at least 1 RDD.
    */
-  def defaultPartitioner(rdd: RDD[_], others: RDD[_]*): Partitioner = {
-    val rdds = (Seq(rdd) ++ others)
-    val hasPartitioner = rdds.filter(_.partitioner.exists(_.numPartitions > 0))
+  def defaultPartitioner(rdd: RDD[_], others: RDD[_]*): Partitioner = {   // * 代表可变参数，类似 Java 的 ...
+    val rdds = Seq(rdd) ++ others   // 合并所有的参数
+    val hasPartitioner = rdds.filter(_.partitioner.exists(_.numPartitions > 0))   // _.partitioner 是个 Option[Partitioner]，exists 接受一个 boolean 函数。其实 partitioner 的作用就是为每个 key 返回一个 Int 代表 partition
     if (hasPartitioner.nonEmpty) {
       hasPartitioner.maxBy(_.partitions.length).partitioner.get
     } else {
       if (rdd.context.conf.contains("spark.default.parallelism")) {
         new HashPartitioner(rdd.context.defaultParallelism)
       } else {
-        new HashPartitioner(rdds.map(_.partitions.length).max)
+        new HashPartitioner(rdds.map(_.partitions.length).max)  // TODO: 为什么要取最大的？
       }
     }
   }

@@ -83,7 +83,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
   override val shuffleBlockResolver = new IndexShuffleBlockResolver(conf)   // 用来实现 blockId 和实际物理文件的对应关系
 
   /**
-   * Register a shuffle with the manager and obtain a handle for it to pass to tasks.
+   * Register a shuffle with the manager and obtain a handle for it to pass to tasks. 这是由 Driver 中的 shuffleManager 负责注册的
    */
   override def registerShuffle[K, V, C](
       shuffleId: Int,
@@ -185,7 +185,7 @@ private[spark] object SortShuffleManager extends Logging {
   // 参见文件首部注释中的三个条件
   def canUseSerializedShuffle(dependency: ShuffleDependency[_, _, _]): Boolean = {
     val shufId = dependency.shuffleId
-    val numPartitions = dependency.partitioner.numPartitions
+    val numPartitions = dependency.partitioner.numPartitions   // numPartitions 表示下游 reduce task 的 partition 数量
     if (!dependency.serializer.supportsRelocationOfSerializedObjects) {
       log.debug(s"Can't use serialized shuffle for shuffle $shufId because the serializer, " +
         s"${dependency.serializer.getClass.getName}, does not support object relocation")

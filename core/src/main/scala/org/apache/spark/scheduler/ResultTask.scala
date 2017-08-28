@@ -76,7 +76,9 @@ private[spark] class ResultTask[T, U](
     val deserializeStartCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime
     } else 0L
-    val ser = SparkEnv.get.closureSerializer.newInstance()
+
+    val ser = SparkEnv.get.closureSerializer.newInstance()     // 对于 Task 的序列化是 closureSerializer，而普通 serializer 针对的是 shuffle 数据等
+
     val (rdd, func) = ser.deserialize[(RDD[T], (TaskContext, Iterator[T]) => U)](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
     _executorDeserializeTime = System.currentTimeMillis() - deserializeStartTime

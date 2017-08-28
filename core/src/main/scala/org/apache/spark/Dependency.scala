@@ -67,7 +67,7 @@ abstract class NarrowDependency[T](_rdd: RDD[T]) extends Dependency[T] {
  * @param mapSideCombine whether to perform partial aggregation (also known as map-side combine)
  */
 @DeveloperApi
-class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
+class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](    // ShuffleDependency 存放了 Shuffle 所有的各种参数，可以认为是一种 Context？
     @transient private val _rdd: RDD[_ <: Product2[K, V]],  // Shuffle 的 RDD 是瞬时的，不需要持久化
     val partitioner: Partitioner,
     val serializer: Serializer = SparkEnv.get.serializer,
