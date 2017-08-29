@@ -109,7 +109,7 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag]
     tracker.getPreferredLocationsForShuffle(dep, partition.index)
   }
 
-  // To compute a given partition
+  // To compute a given partition，也就是读取上一个阶段的结果
   override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {   // 调用 reader 返回的是一个 Iterator
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
     SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle, split.index, split.index + 1, context)

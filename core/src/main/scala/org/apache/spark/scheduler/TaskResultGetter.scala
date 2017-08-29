@@ -54,6 +54,7 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
     }
   }
 
+  // 对于成功的任务，在这里执行
   def enqueueSuccessfulTask(
       taskSetManager: TaskSetManager,
       tid: Long,
@@ -61,7 +62,8 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
     getTaskResultExecutor.execute(new Runnable {
       override def run(): Unit = Utils.logUncaughtExceptions {
         try {
-          val (result, size) = serializer.get().deserialize[TaskResult[_]](serializedData) match {
+          val (result, size) = serializer.get().deserialize[TaskResult[_]](serializedData) match {     // 还是需要 deserialize 的
+              // 然后判断是 DirectTaskResult（尺寸小）还是 IndirectTaskResult（尺寸大）。Scala 的 case 可以避免很多 if instanceof 条件判断
             case directResult: DirectTaskResult[_] =>
               if (!taskSetManager.canFetchMoreResults(serializedData.limit())) {
                 return

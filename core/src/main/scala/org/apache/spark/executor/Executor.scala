@@ -231,6 +231,7 @@ private[spark] class Executor(
       Thread.interrupted()
     }
 
+    // Executor 运行 Task
     override def run(): Unit = {
       val threadMXBean = ManagementFactory.getThreadMXBean
       val taskMemoryManager = new TaskMemoryManager(env.memoryManager, taskId)
@@ -346,12 +347,12 @@ private[spark] class Executor(
 
         // directSend = sending directly back to the driver
         val serializedResult: ByteBuffer = {
-          if (maxResultSize > 0 && resultSize > maxResultSize) {
+          if (maxResultSize > 0 && resultSize > maxResultSize) {    // 如果结果太大，那么直接丢弃了
             logWarning(s"Finished $taskName (TID $taskId). Result is larger than maxResultSize " +
               s"(${Utils.bytesToString(resultSize)} > ${Utils.bytesToString(maxResultSize)}), " +
               s"dropping it.")
             ser.serialize(new IndirectTaskResult[Any](TaskResultBlockId(taskId), resultSize))
-          } else if (resultSize > maxDirectResultSize) {
+          } else if (resultSize > maxDirectResultSize) {   // 如果结果尺寸大于最大直接传递的大小，那么放入 BlockManager 等待调用者通过网络来获取
             val blockId = TaskResultBlockId(taskId)
             env.blockManager.putBytes(
               blockId,
@@ -362,11 +363,11 @@ private[spark] class Executor(
             ser.serialize(new IndirectTaskResult[Any](blockId, resultSize))
           } else {
             logInfo(s"Finished $taskName (TID $taskId). $resultSize bytes result sent to driver")
-            serializedDirectResult
+            serializedDirectResult   // 结果可以直接给 Driver
           }
         }
 
-        execBackend.statusUpdate(taskId, TaskState.FINISHED, serializedResult)
+        execBackend.statusUpdate(taskId, TaskState.FINISHED, serializedResult)   // 告知 Driver 本次 Task 状态已完成
 
       } catch {
         case ffe: FetchFailedException =>

@@ -298,9 +298,9 @@ private[spark] class BlockManager(
    * cannot be read successfully.
    */
   override def getBlockData(blockId: BlockId): ManagedBuffer = {
-    if (blockId.isShuffle) {
+    if (blockId.isShuffle) {   // 如果 shuffle 过的话，调用 shuffleManager 的 shuffleBlockResolver 来获取数据。其实只是解析下绕一圈，还是要用 BlockManager 的 getFile 之类的方法来最终获取数据
       shuffleManager.shuffleBlockResolver.getBlockData(blockId.asInstanceOf[ShuffleBlockId])
-    } else {
+    } else {  // 如果这个 blockId 并没有 shuffle
       getLocalBytes(blockId) match {
         case Some(buffer) => new BlockManagerManagedBuffer(blockInfoManager, blockId, buffer)
         case None =>

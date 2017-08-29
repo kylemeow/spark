@@ -346,6 +346,7 @@ private[spark] class TaskSchedulerImpl(
     return tasks
   }
 
+  // 在 Executor 得到 Task 运行状态（FINISHED /  FAILED 等），就会在这里进行处理
   def statusUpdate(tid: Long, state: TaskState, serializedData: ByteBuffer) {
     var failedExecutor: Option[String] = None
     var reason: Option[ExecutorLossReason] = None
@@ -353,7 +354,7 @@ private[spark] class TaskSchedulerImpl(
       try {
         taskIdToTaskSetManager.get(tid) match {
           case Some(taskSet) =>
-            if (state == TaskState.LOST) {
+            if (state == TaskState.LOST) {   // 对 LOST 任务特殊处理
               // TaskState.LOST is only used by the deprecated Mesos fine-grained scheduling mode,
               // where each executor corresponds to a single task, so mark the executor as failed.
               val execId = taskIdToExecutorId.getOrElse(tid, throw new IllegalStateException(
@@ -368,9 +369,9 @@ private[spark] class TaskSchedulerImpl(
             if (TaskState.isFinished(state)) {
               cleanupTaskState(tid)
               taskSet.removeRunningTask(tid)
-              if (state == TaskState.FINISHED) {
+              if (state == TaskState.FINISHED) {   // 如果任务成功完成
                 taskResultGetter.enqueueSuccessfulTask(taskSet, tid, serializedData)
-              } else if (Set(TaskState.FAILED, TaskState.KILLED, TaskState.LOST).contains(state)) {
+              } else if (Set(TaskState.FAILED, TaskState.KILLED, TaskState.LOST).contains(state)) {     // 如果状态出现 FAILED / KILLED / LOST 等等
                 taskResultGetter.enqueueFailedTask(taskSet, tid, state, serializedData)
               }
             }

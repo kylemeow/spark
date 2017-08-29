@@ -207,9 +207,9 @@ private[spark] class IndexShuffleBlockResolver(
 
     val in = new DataInputStream(new FileInputStream(indexFile))   // TODO: 为什么不需要 Buffer 了？
     try {
-      ByteStreams.skipFully(in, blockId.reduceId * 8)    // 跳过 blockId.reduceId * Long 类型长度 8，这是 Google Guava 库提供的功能。TODO: 为什么根据 reduceId 就能得到偏移量？而不是 shuffleId
-      val offset = in.readLong()
-      val nextOffset = in.readLong()
+      ByteStreams.skipFully(in, blockId.reduceId * 8)    // 跳过 blockId.reduceId * Long 类型长度 8，这是 Google Guava 库提供的功能。跳到本次 Block 的数据区 TODO: 为什么根据 reduceId 就能得到偏移量？而不是 shuffleId
+      val offset = in.readLong()      // 数据文件的开始位置
+      val nextOffset = in.readLong()  // 数据文件的结束位置
       new FileSegmentManagedBuffer(   // 让 FileSegmentManagedBuffer 负责提取数据，提供以 nio 或者 Stream 的方式来读取数据
         transportConf,
         getDataFile(blockId.shuffleId, blockId.mapId),  // 提供文件名和 offset 区间，即可得到数据

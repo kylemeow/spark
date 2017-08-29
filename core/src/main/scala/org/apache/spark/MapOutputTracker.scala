@@ -289,7 +289,7 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
 
   // HashMaps for storing mapStatuses and cached serialized statuses in the driver.
   // Statuses are dropped only by explicit de-registering.
-  protected val mapStatuses = new ConcurrentHashMap[Int, Array[MapStatus]]().asScala
+  protected val mapStatuses = new ConcurrentHashMap[Int, Array[MapStatus]]().asScala     // 对于 Java 容器，可以调用 asScala 来转为 Scala 容器
   private val cachedSerializedStatuses = new ConcurrentHashMap[Int, Array[Byte]]().asScala
 
   private val maxRpcMessageSize = RpcUtils.maxMessageSizeBytes(conf)
@@ -383,7 +383,7 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
 
   /** Register multiple map output information for the given shuffle */
   def registerMapOutputs(shuffleId: Int, statuses: Array[MapStatus], changeEpoch: Boolean = false) {
-    mapStatuses.put(shuffleId, statuses.clone())
+    mapStatuses.put(shuffleId, statuses.clone())    // mapStatuses 定义为 new ConcurrentHashMap[Int, Array[MapStatus]]().asScala   其中 key 是 shuffleId
     if (changeEpoch) {
       incrementEpoch()
     }

@@ -40,7 +40,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
   private val dep = handle.dependency   // TODO: 只有一个 dependency
 
   /** Read the combined key-values for this reduce task */
-  // 核心函数
+  // 核心函数，当一个 Stage 开始时的 ShuffledRDD.compute 函数调用它来读取之前的 Shuffle Write 结果
   override def read(): Iterator[Product2[K, C]] = {
 
     /* ShuffleBlockFetcherIterator: An iterator that fetches multiple blocks. For local blocks, it fetches from the local block
@@ -50,9 +50,10 @@ private[spark] class BlockStoreShuffleReader[K, C](
      * in a pipelined fashion as they are received.
      */
 
+    // 获取结果 ShuffleBlockFetcher
     val blockFetcherItr = new ShuffleBlockFetcherIterator(
       context,  // context [[TaskContext]], used for metrics update
-      blockManager.shuffleClient,  // shuffleClient [[ShuffleClient]] for fetching remote blocks
+      blockManager.shuffleClient,  // shuffleClient [[ShuffleClient]] for fetching remote blocks. 返回 ExternalShuffleClient 类
       blockManager,  // blockManager [[BlockManager]] for reading local blocks
       mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition),   // blocksByAddress list of blocks to fetch grouped by the [[BlockManagerId]].
       // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
@@ -86,26 +87,25 @@ private[spark] class BlockStoreShuffleReader[K, C](
     // An interruptible iterator must be used here in order to support task cancellation
     val interruptibleIter = new InterruptibleIterator[(Any, Any)](context, metricIter)   // InterruptibleIterator 可以包装一个其他的 Iterator，在遇到 context.isInterrupted 为 true 后就抛出异常而不是继续
 
-    val aggregatedIter: Iterator[Product2[K, C]] = if (dep.aggregator.isDefined) {
-      if (dep.mapSideCombine) {   // 如果已经在 map-side 做过了 combine
-        // 此时读取的 values 已经被 combine 函数处理过了
+    val aggregatedIter: Iterator[Product2[K, C]] = if (dep.aggregator.isDefined) {  // 如果需要聚合
+      if (dep.mapSideCombine) {   // 如果已经在 map-side 做过了 combine，此时读取的 values 已经被 combine 函数处理过了
         val combinedKeyValuesIterator = interruptibleIter.asInstanceOf[Iterator[(K, C)]]
         dep.aggregator.get.combineCombinersByKey(combinedKeyValuesIterator, context)   // 如果 value 已经做过 combine，那么就把 combiner 合并起来即可（也就是提前做了预处理）
-      } else {
+      } else {  // 只需要 Reducer 端进行聚合
         // We don't know the value type, but also don't care -- the dependency *should*
         // have made sure its compatible w/ this aggregator, which will convert the value
         // type to the combined type C
         val keyValuesIterator = interruptibleIter.asInstanceOf[Iterator[(K, Nothing)]]
         dep.aggregator.get.combineValuesByKey(keyValuesIterator, context)              // 否则如果 value 还没有做过 combine，那么就要统一把所有 value 合并起来
       }
-    } else {
+    } else {   // 完全不需要聚合
       require(!dep.mapSideCombine, "Map-side combine without Aggregator specified!")  // 有点像 assert. 这里的意思是提供了 aggregator 才可以实现 map-side combine
       interruptibleIter.asInstanceOf[Iterator[Product2[K, C]]]
     }
 
-    // Sort the output if there is a sort ordering defined.
+    // Sort the output if there is a sort ordering defined. 判断是否需要排序
     dep.keyOrdering match {
-      case Some(keyOrd: Ordering[K]) =>
+      case Some(keyOrd: Ordering[K]) =>  // 需要排序的话
         // Create an ExternalSorter to sort the data. Note that if spark.shuffle.spill is disabled,   因为数据量太大，所以使用支持 spill 的外部排序，除非禁用了 spill 选项
         // the ExternalSorter won't spill to disk.
         val sorter =
@@ -118,7 +118,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
         context.taskMetrics().incPeakExecutionMemory(sorter.peakMemoryUsedBytes)
 
         CompletionIterator[Product2[K, C], Iterator[Product2[K, C]]](sorter.iterator, sorter.stop())   // 这个 CompletionIterator 会在 Iteration 结束时调用给定的完成方法
-      case None =>
+      case None =>   // 如果不需要排序
         aggregatedIter
     }
   }

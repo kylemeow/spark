@@ -23,13 +23,14 @@ import javax.annotation.concurrent.GuardedBy
 
 import scala.collection.mutable.{ArrayBuffer, HashSet, Queue}
 import scala.util.control.NonFatal
-
 import org.apache.spark.{SparkException, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.network.shuffle.{BlockFetchingListener, ShuffleClient}
 import org.apache.spark.shuffle.FetchFailedException
 import org.apache.spark.util.Utils
+
+import scala.collection.mutable
 
 /**
  * An iterator that fetches multiple blocks. For local blocks, it fetches from the local block
@@ -193,6 +194,7 @@ final class ShuffleBlockFetcherIterator(
     )
   }
 
+  // 通过这个方法来划分读取策略：是在本地还是通过网络
   private[this] def splitLocalRemoteBlocks(): ArrayBuffer[FetchRequest] = {
     // Make remote requests at most maxBytesInFlight / 5 in length; the reason to keep them
     // smaller than maxBytesInFlight is to allow multiple, parallel fetches from up to 5
@@ -201,7 +203,7 @@ final class ShuffleBlockFetcherIterator(
     logDebug("maxBytesInFlight: " + maxBytesInFlight + ", targetRequestSize: " + targetRequestSize)
 
     // Split local and remote blocks. Remote blocks are further split into FetchRequests of size
-    // at most maxBytesInFlight in order to limit the amount of data in flight.
+    // at most maxBytesInFlight in order to limit the amount of data in flight.    远程请求要限制尺寸
     val remoteRequests = new ArrayBuffer[FetchRequest]
 
     // Tracks total number of blocks (including zero sized blocks)
@@ -209,14 +211,15 @@ final class ShuffleBlockFetcherIterator(
     for ((address, blockInfos) <- blocksByAddress) {
       totalBlocks += blockInfos.size
       if (address.executorId == blockManager.blockManagerId.executorId) {
-        // Filter out zero-sized blocks
-        localBlocks ++= blockInfos.filter(_._2 != 0).map(_._1)
+        // Block 位置在本地，要过滤掉大小为 0 的 block
+        localBlocks ++= blockInfos.filter(_._2 != 0).map(_._1)    // 更新本地 blocks 列表
         numBlocksToFetch += localBlocks.size
-      } else {
+      } else {   // 需要远程获取的 Block
         val iterator = blockInfos.iterator
         var curRequestSize = 0L
         var curBlocks = new ArrayBuffer[(BlockId, Long)]
         while (iterator.hasNext) {
+          // blockId 格式是 "shuffle_" + shuffleId + "_" + mapId + "_" + reduceId
           val (blockId, size) = iterator.next()
           // Skip empty blocks
           if (size > 0) {
@@ -228,14 +231,14 @@ final class ShuffleBlockFetcherIterator(
             throw new BlockException(blockId, "Negative block size " + size)
           }
           if (curRequestSize >= targetRequestSize) {
-            // Add this FetchRequest
+            // 如果当前 size 已经可以批量地放入一次 FetchRequest
             remoteRequests += new FetchRequest(address, curBlocks)
             curBlocks = new ArrayBuffer[(BlockId, Long)]
             logDebug(s"Creating fetch request of $curRequestSize at $address")
             curRequestSize = 0
           }
         }
-        // Add in the final request
+        // 剩下的请求作为最后一次 FetchRequest
         if (curBlocks.nonEmpty) {
           remoteRequests += new FetchRequest(address, curBlocks)
         }
@@ -250,12 +253,13 @@ final class ShuffleBlockFetcherIterator(
    * `ManagedBuffer`'s memory is allocated lazily when we create the input stream, so all we
    * track in-memory are the ManagedBuffer references themselves.
    */
+  // 负责本地读取
   private[this] def fetchLocalBlocks() {
-    val iter = localBlocks.iterator
+    val iter = localBlocks.iterator   // 前一个函数保存的 localBlocks 列表
     while (iter.hasNext) {
       val blockId = iter.next()
       try {
-        val buf = blockManager.getBlockData(blockId)
+        val buf = blockManager.getBlockData(blockId)   // 调用 blockManager.getBlockData 方法
         shuffleMetrics.incLocalBlocksFetched(1)
         shuffleMetrics.incLocalBytesRead(buf.size)
         buf.retain()

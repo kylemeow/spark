@@ -1181,7 +1181,7 @@ class DAGScheduler(
           case smt: ShuffleMapTask =>
             val shuffleStage = stage.asInstanceOf[ShuffleMapStage]
             updateAccumulators(event)
-            val status = event.result.asInstanceOf[MapStatus]
+            val status = event.result.asInstanceOf[MapStatus]   // 这里获取 Task 运行结果 MapStatus
             val execId = status.location.executorId
             logDebug("ShuffleMapTask finished on " + execId)
             if (failedEpoch.contains(execId) && smt.epoch <= failedEpoch(execId)) {
@@ -1203,7 +1203,7 @@ class DAGScheduler(
               // epoch incremented to refetch them.
               // TODO: Only increment the epoch number if this is not the first time
               //       we registered these map outputs.
-              mapOutputTracker.registerMapOutputs(
+              mapOutputTracker.registerMapOutputs(      // 注册 MapOutputs，完成对 Result 的处理过程
                 shuffleStage.shuffleDep.shuffleId,
                 shuffleStage.outputLocInMapOutputTrackerFormat(),
                 changeEpoch = true)
