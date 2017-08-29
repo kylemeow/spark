@@ -150,6 +150,7 @@ class StorageLevel private(
  * new storage levels.
  */
 object StorageLevel {
+  // 原来是如此定义这些常量的。给定多个参数，然后通过它们来组合实现
   val NONE = new StorageLevel(false, false, false, false)
   val DISK_ONLY = new StorageLevel(true, false, false, false)
   val DISK_ONLY_2 = new StorageLevel(true, false, false, false, 2)

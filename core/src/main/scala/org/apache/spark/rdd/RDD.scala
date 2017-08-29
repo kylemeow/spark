@@ -50,9 +50,9 @@ import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, Poi
  * partitioned collection of elements that can be operated on in parallel. This class contains the
  * basic operations available on all RDDs, such as `map`, `filter`, and `persist`. In addition,
  * [[org.apache.spark.rdd.PairRDDFunctions]] contains operations available only on RDDs of key-value
- * pairs, such as `groupByKey` and `join`;
+ * pairs, such as `groupByKey` and `join`;   PairRDDFunctions 专门针对 k,v 键值对类型的 RDD
  * [[org.apache.spark.rdd.DoubleRDDFunctions]] contains operations available only on RDDs of
- * Doubles; and
+ * Doubles; and     DoubleRDDFunctions 专门针对 Double 类型的 RDD
  * [[org.apache.spark.rdd.SequenceFileRDDFunctions]] contains operations available on RDDs that
  * can be saved as SequenceFiles.
  * All operations are automatically available on any RDD of the right type (e.g. RDD[(Int, Int)]
@@ -60,9 +60,9 @@ import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, Poi
  *
  * Internally, each RDD is characterized by five main properties:
  *
- *  - A list of partitions
+ *  - A list of partitions（有 index 可以区分）
  *  - A function for computing each split
- *  - A list of dependencies on other RDDs
+ *  - A list of dependencies on other RDDs（这就是 deps、Dependency）的来源
  *  - Optionally, a Partitioner for key-value RDDs (e.g. to say that the RDD is hash-partitioned)
  *  - Optionally, a list of preferred locations to compute each split on (e.g. block locations for
  *    an HDFS file)
@@ -100,6 +100,7 @@ abstract class RDD[T: ClassTag](
   }
 
   /** Construct an RDD with just a one-to-one dependency on one parent */
+  // 辅助构造方法，构造一个只依赖一个 parent 的 RDD。传入的是 parentRdd
   def this(@transient oneParent: RDD[_]) =
     this(oneParent.context, List(new OneToOneDependency(oneParent)))
 
@@ -122,7 +123,7 @@ abstract class RDD[T: ClassTag](
    * The partitions in this array must satisfy the following property:
    *   `rdd.partitions.zipWithIndex.forall { case (partition, index) => partition.index == index }`
    */
-  protected def getPartitions: Array[Partition]
+  protected def getPartitions: Array[Partition]    // 例如 ShuffledRDD 的实现是： Array.tabulate[Partition](part.numPartitions)(i => new ShuffledRDDPartition(i))
 
   /**
    * Implemented by subclasses to return how this RDD depends on parent RDDs. This method will only
@@ -143,10 +144,10 @@ abstract class RDD[T: ClassTag](
   // =======================================================================
 
   /** The SparkContext that created this RDD. */
-  def sparkContext: SparkContext = sc
+  def sparkContext: SparkContext = sc   // RDD 由 sparkContext 创建，例如 Spark-Shell 中的 sc.parallelize、sc.textFile 等等
 
   /** A unique ID for this RDD (within its SparkContext). */
-  val id: Int = sc.newRddId()
+  val id: Int = sc.newRddId()     // 对于某个 SparkContext 来说， RDDId 是递增的
 
   /** A friendly name for this RDD */
   @transient var name: String = null
@@ -163,17 +164,20 @@ abstract class RDD[T: ClassTag](
    * @param newLevel the target storage level
    * @param allowOverride whether to override any existing level with the new one
    */
-  private def persist(newLevel: StorageLevel, allowOverride: Boolean): this.type = {
+  private def persist(newLevel: StorageLevel, allowOverride: Boolean): this.type = {    // 返回 this 对象的话，返回值是 this.type 即可，便于链式调用
     // TODO: Handle changes of StorageLevel
+
+    // 当不允许覆盖 StorageLevel 时试图传入新的就会引发异常
     if (storageLevel != StorageLevel.NONE && newLevel != storageLevel && !allowOverride) {
       throw new UnsupportedOperationException(
         "Cannot change storage level of an RDD after it was already assigned a level")
     }
     // If this is the first time this RDD is marked for persisting, register it
     // with the SparkContext for cleanups and accounting. Do this only once.
+    // 如果是第一次（之前为 NONE），那么向 SparkContext 注册从而便于之后的 gc 清理
     if (storageLevel == StorageLevel.NONE) {
       sc.cleaner.foreach(_.registerRDDForCleanup(this))
-      sc.persistRDD(this)
+      sc.persistRDD(this)   // 仍然是向 sc 注册
     }
     storageLevel = newLevel
     this
@@ -213,7 +217,7 @@ abstract class RDD[T: ClassTag](
    */
   def unpersist(blocking: Boolean = true): this.type = {
     logInfo("Removing RDD " + id + " from persistence list")
-    sc.unpersistRDD(id, blocking)
+    sc.unpersistRDD(id, blocking)   // 从 sc 解除注册 RDD，而 cleanup 注册则不需要解除
     storageLevel = StorageLevel.NONE
     this
   }
@@ -359,15 +363,17 @@ abstract class RDD[T: ClassTag](
    *
    * Note: Return statements are NOT allowed in the given body.
    */
+  // TODO: withScope 的理解 https://stackoverflow.com/questions/37691391/spark-source-code-how-to-understand-withscope-method
+
   private[spark] def withScope[U](body: => U): U = RDDOperationScope.withScope[U](sc)(body)
 
-  // Transformations (return a new RDD)
+  // Transformations (return a new RDD)   转换操作。RDD 的常见函数都在这里了
 
   /**
    * Return a new RDD by applying a function to all elements of this RDD.
    */
   def map[U: ClassTag](f: T => U): RDD[U] = withScope {
-    val cleanF = sc.clean(f)
+    val cleanF = sc.clean(f)    // 清理 f 这个闭包
     new MapPartitionsRDD[U, T](this, (context, pid, iter) => iter.map(cleanF))
   }
 
@@ -419,7 +425,7 @@ abstract class RDD[T: ClassTag](
   }
 
   /**
-   * Return a new RDD that is reduced into `numPartitions` partitions.
+   * Return a new RDD that is reduced into `numPartitions` partitions.  注意这个操作生成的是窄依赖
    *
    * This results in a narrow dependency, e.g. if you go from 1000 partitions
    * to 100 partitions, there will not be a shuffle, instead each of the 100

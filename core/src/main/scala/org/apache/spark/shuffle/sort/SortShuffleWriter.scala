@@ -28,7 +28,7 @@ import org.apache.spark.util.collection.ExternalSorter
 private[spark] class SortShuffleWriter[K, V, C](
     shuffleBlockResolver: IndexShuffleBlockResolver,
     handle: BaseShuffleHandle[K, V, C],
-    mapId: Int,
+    mapId: Int,   // TODO: 但是为什么传入的是 partitionId 呢？
     context: TaskContext)
   extends ShuffleWriter[K, V] with Logging {
 
@@ -48,7 +48,7 @@ private[spark] class SortShuffleWriter[K, V, C](
   private val writeMetrics = context.taskMetrics().shuffleWriteMetrics
 
   /** Write a bunch of records to this task's output */
-  // 这个方法很重要
+  // 这个方法很重要，具体的使用 RDD Iterator 写入的过程
   override def write(records: Iterator[Product2[K, V]]): Unit = {
     // 如果指定的 map-side combine，那么必须同时指定 aggregator.
     // 如果有 aggregator，那么需要传入 keyOrdering，这样排序后归并更快

@@ -459,7 +459,7 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
       fractionThreshold: Double)
     : Option[Array[BlockManagerId]] = {
 
-    val statuses = mapStatuses.get(shuffleId).orNull
+    val statuses = mapStatuses.get(shuffleId).orNull      // 从 MapStatus 得到 ShuffleId（一个文件名字符串，由 mapId、reduceId 等部分组成）
     if (statuses != null) {
       statuses.synchronized {
         if (statuses.nonEmpty) {
