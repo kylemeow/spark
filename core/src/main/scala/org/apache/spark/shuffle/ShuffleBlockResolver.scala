@@ -32,7 +32,7 @@ trait ShuffleBlockResolver {
 
   /**
    * Retrieve the data for the specified block. If the data for that block is not available,
-   * throws an unspecified exception.
+   * throws an unspecified exception. 可以从本地或者网络远程获取 blockData
    */
   def getBlockData(blockId: ShuffleBlockId): ManagedBuffer    // 可以根据 ShuffleBlockId 来得到 Block 数据，而不必考虑具体是来自文件还是文件段还是其他地方。blockId 就是包含了 shuffleId、mapId、reduceId，可以生成文件名
 

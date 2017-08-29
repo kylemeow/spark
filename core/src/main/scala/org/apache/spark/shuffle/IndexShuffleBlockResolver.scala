@@ -56,7 +56,7 @@ private[spark] class IndexShuffleBlockResolver(
 
   // 数据文件和索引（index）文件是分开放的。返回的是 Java 原生的 File 对象。根据 shuffleBlockId 和 mapId 就可以找到这个文件啦
   def getDataFile(shuffleId: Int, mapId: Int): File = {
-    blockManager.diskBlockManager.getFile(ShuffleDataBlockId(shuffleId, mapId, NOOP_REDUCE_ID))  // 只是返回个文件名罢了："shuffle_" + shuffleId + "_" + mapId + "_" + reduceId + ".data"
+    blockManager.diskBlockManager.getFile(ShuffleDataBlockId(shuffleId, mapId, NOOP_REDUCE_ID))  // 只是返回个文件名罢了："shuffle_" + shuffleId + "_" + mapId + "_" + reduceId + ".data" 这里的 reduceId 恒为零
   }
 
   private def getIndexFile(shuffleId: Int, mapId: Int): File = {
@@ -143,7 +143,7 @@ private[spark] class IndexShuffleBlockResolver(
   def writeIndexFileAndCommit(
       shuffleId: Int,
       mapId: Int,
-      lengths: Array[Long],
+      lengths: Array[Long],   // 每个 block 的长度信息
       dataTmp: File): Unit = {  // 注意传入的是 dataTmp 临时文件
     val indexFile = getIndexFile(shuffleId, mapId)   // 得到要写入的 Index File 对象
     val indexTmp = Utils.tempFileWith(indexFile)     // 在相同目录下创建一个临时文件  new File(indexFile.getAbsolutePath + "." + UUID.randomUUID())
@@ -152,7 +152,7 @@ private[spark] class IndexShuffleBlockResolver(
       Utils.tryWithSafeFinally {  // 这个函数非常有用，对于写入文件时尽量用它，避免 out.write 抛出异常后 out.close 也发生异常从而掩盖了之前的异常信息。TODO: Scala 这种传入代码块的表示方法太棒了
         // We take in lengths of each block, need to convert it to offsets.
         var offset = 0L
-        out.writeLong(offset)
+        out.writeLong(offset)    // TODO: 瞬间明白了，这里面写的每个都相当于 reduceId（递增），因此文件名中的 reduceId 才恒为零，因为组合成一个文件了！！！
         for (length <- lengths) {
           offset += length
           out.writeLong(offset)
@@ -164,7 +164,7 @@ private[spark] class IndexShuffleBlockResolver(
       val dataFile = getDataFile(shuffleId, mapId)   // 先有 dataFile，然后写入 indexFile，并校验两者是否一致
       // There is only one IndexShuffleBlockResolver per executor, this synchronization make sure
       // the following check and rename are atomic.
-      // TODO: 注意这里需要 synchronized，但其他地方为什么不需要呢？
+      // TODO: 注意这里需要 synchronized，并没有竞争，只是为了确保检查、更名操作的原子性，这样才好 commit
       synchronized {
         val existingLengths = checkIndexAndDataFile(indexFile, dataFile, lengths.length)
         if (existingLengths != null) {  // 如果先有的 dataFile 和 indexFile 信息一致，并返回了各个 segments 的长度信息，那么就没必要替换先有文件了
@@ -200,14 +200,14 @@ private[spark] class IndexShuffleBlockResolver(
   }
 
   // 这个文件是核心的
-  override def getBlockData(blockId: ShuffleBlockId): ManagedBuffer = {
+  override def getBlockData(blockId: ShuffleBlockId): ManagedBuffer = {   // 注意分清 blockId 和 shuffleId 等，blockId 本质上是个文件名字符串，包含了 shuffleId、mapId、reduceId 等维度
     // The block is actually going to be a range of a single map output file for this map, so
     // find out the consolidated file, then the offset within that from our index
     val indexFile = getIndexFile(blockId.shuffleId, blockId.mapId)   // 模式匹配时的参数外部也可以直接访问
 
     val in = new DataInputStream(new FileInputStream(indexFile))   // TODO: 为什么不需要 Buffer 了？
     try {
-      ByteStreams.skipFully(in, blockId.reduceId * 8)    // 跳过 blockId.reduceId * Long 类型长度 8，这是 Google Guava 库提供的功能。跳到本次 Block 的数据区 TODO: 为什么根据 reduceId 就能得到偏移量？而不是 shuffleId
+      ByteStreams.skipFully(in, blockId.reduceId * 8)    // 跳过 blockId.reduceId * Long 类型长度 8，这是 Google Guava 库提供的功能。跳到本次 Block 的数据区 TODO: reduceId 其实就是写入的一个个 offset 顺序排列
       val offset = in.readLong()      // 数据文件的开始位置
       val nextOffset = in.readLong()  // 数据文件的结束位置
       new FileSegmentManagedBuffer(   // 让 FileSegmentManagedBuffer 负责提取数据，提供以 nio 或者 Stream 的方式来读取数据
