@@ -37,11 +37,11 @@ private[spark] trait ShuffleManager {
       numMaps: Int,
       dependency: ShuffleDependency[K, V, C]): ShuffleHandle
 
-  /** 为一个特定的 partition 得到一个 writer，然后由 executors 在 map 任务阶段调用它。非常重要，Map Task 用 writer，Reduce Task 用 reader */
+  /** 为一个特定的 partition 得到一个 writer，然后由 executors 在 map 任务阶段调用它（ShuffleMapTask#runTask)。非常重要，Map Task 用 writer，Reduce Task 用 reader */
   def getWriter[K, V](handle: ShuffleHandle, mapId: Int, context: TaskContext): ShuffleWriter[K, V]
 
   /**
-   * 为一个区间的 reduce partitions 得到一个 reader 区间为 [startPartition to endPartition-1]. Executor 会在 reduce 阶段调用它
+   * 为 [startPartition, endPartition-1] 区间的 reduce partitions 得到一个 reader. Executor 会在 reduce 阶段调用它(ShuffledRDD#compute)
    */
   def getReader[K, C](
       handle: ShuffleHandle,
@@ -53,7 +53,7 @@ private[spark] trait ShuffleManager {
    * Remove a shuffle's metadata from the ShuffleManager.
    * @return true if the metadata removed successfully, otherwise false.
    */
-  def unregisterShuffle(shuffleId: Int): Boolean
+  def unregisterShuffle(shuffleId: Int): Boolean    // shuffleId 是一个 Int 值
 
   /**
    * 返回一个根据 block 坐标即可得到 shuffle block 数据的解析器

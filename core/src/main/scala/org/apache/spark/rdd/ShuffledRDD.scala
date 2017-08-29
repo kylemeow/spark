@@ -110,8 +110,8 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag]
     tracker.getPreferredLocationsForShuffle(dep, partition.index)
   }
 
-  // To compute a given partition，也就是读取上一个阶段的结果，这也是一个很重要的核心函数
-  override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {   // 调用 reader 返回的是一个 Iterator
+  // To compute a given partition（注意计算的是 partition），也就是读取上一个阶段的结果，这也是一个很重要的核心函数
+  override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {   // 调用 reader 返回的是一个 Iterator，读取这个 partition 的数据
     // 获得这个 RDD 的上级 dependency
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
 

@@ -87,7 +87,7 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](    // ShuffleDep
 
   val shuffleId: Int = _rdd.context.newShuffleId()
 
-  val shuffleHandle: ShuffleHandle = _rdd.context.env.shuffleManager.registerShuffle(
+  val shuffleHandle: ShuffleHandle = _rdd.context.env.shuffleManager.registerShuffle(    // 根据 shuffleId、partition 数、以及 dependency 信息注册并返回一个（合适类型的）ShuffleHandle
     shuffleId, _rdd.partitions.length, this)
 
   _rdd.sparkContext.cleaner.foreach(_.registerShuffleForCleanup(this))

@@ -37,7 +37,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
     mapOutputTracker: MapOutputTracker = SparkEnv.get.mapOutputTracker)
   extends ShuffleReader[K, C] with Logging {
 
-  private val dep = handle.dependency   // TODO: 只有一个 dependency
+  private val dep = handle.dependency   // TODO: 只有一个 dependency, 可以从 ShuffleHandle 中获取
 
   /** Read the combined key-values for this reduce task */
   // 核心函数，当一个 Stage 开始时的 ShuffledRDD.compute 函数调用它来读取之前的 Shuffle Write 结果

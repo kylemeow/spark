@@ -1010,7 +1010,7 @@ class DAGScheduler(
 
     val tasks: Seq[Task[_]] = try {
       stage match {
-        case stage: ShuffleMapStage =>
+        case stage: ShuffleMapStage =>  // 如果当前阶段仍然是 ShuffleMapStage，那么对每个 partitions 的 index，都生成一个 ShuffleMapTask
           partitionsToCompute.map { id =>
             val locs = taskIdToLocations(id)
             val part = stage.rdd.partitions(id)

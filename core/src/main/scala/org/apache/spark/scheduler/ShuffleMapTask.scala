@@ -104,7 +104,7 @@ private[spark] class ShuffleMapTask(
     var writer: ShuffleWriter[Any, Any] = null   // TODO: 注意 [Any, Any] 和 [_, _] 的区别
     try {
       val manager = SparkEnv.get.shuffleManager   // 先得到 ShuffleManager（之前分为 Hash 和 Sort，现在已经合并），再得到 writer 用来写数据（map 阶段是 writer 写数据，reduce 阶段是 reader 读数据）
-      writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)   // TODO: 定义是 mapId，这里怎么是 partitionId 呢？都是 Int 数字，也许这里相等？
+      writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)   // TODO: 定义是 mapId，这里怎么是 partitionId 呢？都是 Int 数字，也许这里相等？这个 partitionId 和下面的 partition 对象的联系？
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])   // taskContext 里面可以更新一些 Metrics 统计信息等等
       writer.stop(success = true).get   // 关闭 writer，并告知它写入成功，得知 MapStatus：Result returned by a ShuffleMapTask to a scheduler. Includes the block manager address that the task ran on as well as the sizes of outputs for each reducer, for passing on to the reduce tasks.
     } catch {
