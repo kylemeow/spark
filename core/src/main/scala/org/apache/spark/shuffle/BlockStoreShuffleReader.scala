@@ -28,16 +28,16 @@ import org.apache.spark.util.collection.ExternalSorter
  * 从其他节点的 node store 请求读取之前的 shuffle 过程创建的范围 [startPartition, endPartition) 内的 partitions，所以说 Shuffle 需要 Writer 而之后的过程需要 Reader
  */
 private[spark] class BlockStoreShuffleReader[K, C](
-    handle: BaseShuffleHandle[K, _, C],   // 不考虑 V
+    handle: BaseShuffleHandle[K, _, C],   // 不考虑 V. KVC 主要是用来传递给 ShuffleDependency 的 RDD 和 Aggregator 来具体化类型的
     startPartition: Int,
     endPartition: Int,
     context: TaskContext,  // 任务运行的上下文环境，由 stageId、partitionId、isCompleted、isRunningLocally 等信息组成
     serializerManager: SerializerManager = SparkEnv.get.serializerManager,
     blockManager: BlockManager = SparkEnv.get.blockManager,
-    mapOutputTracker: MapOutputTracker = SparkEnv.get.mapOutputTracker)
+    mapOutputTracker: MapOutputTracker = SparkEnv.get.mapOutputTracker)   // MapOutputTracker 用来保存 ShuffleMapTask 运行结束后的 MapResult 和数据位置信息
   extends ShuffleReader[K, C] with Logging {
 
-  private val dep = handle.dependency   // TODO: 只有一个 dependency, 可以从 ShuffleHandle 中获取
+  private val dep = handle.dependency   // 只有一个 One-to-one dependency, 可以从 ShuffleHandle 中获取
 
   /** Read the combined key-values for this reduce task */
   // 核心函数，当一个 Stage 开始时的 ShuffledRDD.compute 函数调用它来读取之前的 Shuffle Write 结果
@@ -65,7 +65,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
       serializerManager.wrapStream(blockId, inputStream)
     }
 
-    val serializerInstance = dep.serializer.newInstance()  // 根据 dependency 的 serializer 来反序列化，因为之前是它给序列化的
+    val serializerInstance = dep.serializer.newInstance()  // 根据 dependency 的 serializer 来反序列化，因为之前是它给序列化的。Dependency 就是父母，记录了生成的前因
 
     // Create a key/value iterator for each stream  为每个流创建一个 K,V 的 Iterator
     val recordIter = wrappedStreams.flatMap { wrappedStream =>

@@ -26,10 +26,10 @@ import org.apache.spark.util.Utils
 import org.apache.spark.util.collection.ExternalSorter
 
 private[spark] class SortShuffleWriter[K, V, C](
-    shuffleBlockResolver: IndexShuffleBlockResolver,
-    handle: BaseShuffleHandle[K, V, C],
-    mapId: Int,   // TODO: 但是为什么传入的是 partitionId 呢？
-    context: TaskContext)
+    shuffleBlockResolver: IndexShuffleBlockResolver,    // 可以根据 shuffleId 和 mapId 得到 data 和 index 文件，即逻辑块和实际物理地址的对应关系
+    handle: BaseShuffleHandle[K, V, C],   // 有 shuffleId、numMaps、dependency 等各种信息，用来提示是以什么方式 Shuffle 的
+    mapId: Int,   // TODO: 但是为什么调用是传入的是 partitionId 呢？一个 partition 一个 map？
+    context: TaskContext)    // 主要有 stageId 和 partitionId
   extends ShuffleWriter[K, V] with Logging {
 
   private val dep = handle.dependency
@@ -48,6 +48,10 @@ private[spark] class SortShuffleWriter[K, V, C](
   private val writeMetrics = context.taskMetrics().shuffleWriteMetrics
 
   /** Write a bunch of records to this task's output */
+  // ShuffleMapTask 对本方法的用法：
+  // writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)   // TODO: 定义是 mapId，这里怎么是 partitionId 呢？都是 Int 数字，也许这里相等？这个 partitionId 和下面的 partition 对象的联系？
+  // writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])   // taskContext 里面可以更新一些 Metrics 统计信息等等
+
   // 这个方法很重要，具体的使用 RDD Iterator 写入的过程
   override def write(records: Iterator[Product2[K, V]]): Unit = {
     // 如果指定的 map-side combine，那么必须同时指定 aggregator.
@@ -63,7 +67,7 @@ private[spark] class SortShuffleWriter[K, V, C](
       new ExternalSorter[K, V, V](   // 如果没有指定 aggregator，那么 V 和 C 是相等的
         context, aggregator = None, Some(dep.partitioner), ordering = None, dep.serializer)
     }
-    sorter.insertAll(records)
+    sorter.insertAll(records)  // TODO: 这是写入磁盘了吗？
 
     // Don't bother including the time to open the merged output file in the shuffle write time,
     // because it just opens a single file, so is typically too fast to measure accurately
