@@ -24,6 +24,6 @@ import org.apache.spark.ShuffleDependency
  */
 private[spark] class BaseShuffleHandle[K, V, C](
     shuffleId: Int,
-    val numMaps: Int,
+    val numMaps: Int,   // 由此可以引申出很多 mapId
     val dependency: ShuffleDependency[K, V, C])
   extends ShuffleHandle(shuffleId)

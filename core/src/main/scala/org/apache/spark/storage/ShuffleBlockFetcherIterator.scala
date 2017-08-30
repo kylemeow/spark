@@ -155,6 +155,7 @@ final class ShuffleBlockFetcherIterator(
     }
   }
 
+  // 根据 FetchRequest 向远程请求数据：FetchRequest 包括了 host、port、executorId 等地址信息用来通讯
   private[this] def sendRequest(req: FetchRequest) {
     logDebug("Sending request for %d blocks (%s) from %s".format(
       req.blocks.size, Utils.bytesToString(req.size), req.address.hostPort))
@@ -167,6 +168,7 @@ final class ShuffleBlockFetcherIterator(
     val blockIds = req.blocks.map(_._1.toString)
 
     val address = req.address
+    // 通过 shuffleClient 远程获取结果（传入 host:port、executorId，以及 blockId 列表）
     shuffleClient.fetchBlocks(address.host, address.port, address.executorId, blockIds.toArray,
       new BlockFetchingListener {
         override def onBlockFetchSuccess(blockId: String, buf: ManagedBuffer): Unit = {
@@ -203,15 +205,15 @@ final class ShuffleBlockFetcherIterator(
     logDebug("maxBytesInFlight: " + maxBytesInFlight + ", targetRequestSize: " + targetRequestSize)
 
     // Split local and remote blocks. Remote blocks are further split into FetchRequests of size
-    // at most maxBytesInFlight in order to limit the amount of data in flight.    远程请求要限制尺寸
+    // at most maxBytesInFlight in order to limit the amount of data in flight.    远程请求要限制尺寸，不能太大给网络造成负担
     val remoteRequests = new ArrayBuffer[FetchRequest]
 
     // Tracks total number of blocks (including zero sized blocks)
     var totalBlocks = 0
     for ((address, blockInfos) <- blocksByAddress) {
       totalBlocks += blockInfos.size
-      if (address.executorId == blockManager.blockManagerId.executorId) {
-        // Block 位置在本地，要过滤掉大小为 0 的 block
+      if (address.executorId == blockManager.blockManagerId.executorId) {   // Block 位置在本地 ExecutorId
+        // 要过滤掉大小为 0 的 block
         localBlocks ++= blockInfos.filter(_._2 != 0).map(_._1)    // 更新本地 blocks 列表
         numBlocksToFetch += localBlocks.size
       } else {   // 需要远程获取的 Block
@@ -240,7 +242,7 @@ final class ShuffleBlockFetcherIterator(
         }
         // 剩下的请求作为最后一次 FetchRequest
         if (curBlocks.nonEmpty) {
-          remoteRequests += new FetchRequest(address, curBlocks)
+          remoteRequests += new FetchRequest(address, curBlocks)   // 通过指定远程的 blockManagerId 来获取一个 (blockId, size) 列表
         }
       }
     }

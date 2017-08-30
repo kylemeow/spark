@@ -57,7 +57,7 @@ class ExternalAppendOnlyMap[K, V, C](
     createCombiner: V => C,
     mergeValue: (C, V) => C,
     mergeCombiners: (C, C) => C,
-    serializer: Serializer = SparkEnv.get.serializer,
+    serializer: Serializer = SparkEnv.get.serializer,  // TODO: 为什么不从 serializerManager 中得到 serializer？
     blockManager: BlockManager = SparkEnv.get.blockManager,
     context: TaskContext = TaskContext.get(),
     serializerManager: SerializerManager = SparkEnv.get.serializerManager)

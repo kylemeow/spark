@@ -680,20 +680,21 @@ private[spark] class ExternalSorter[K, V, C](
    * @param blockId block ID to write to. The index file will be blockId.name + ".index".
    * @return array of lengths, in bytes, of each partition of the file (used by map output tracker)
    */
+  // 这个文件是重中之重
   def writePartitionedFile(
       blockId: BlockId,
-      outputFile: File): Array[Long] = {
+      outputFile: File): Array[Long] = {   // outputFile 一开始是一个 tmp 文件
 
     // Track location of each range in the output file
-    val lengths = new Array[Long](numPartitions)
+    val lengths = new Array[Long](numPartitions)    // 从 partitioner 得到 map partitions 数目，这个作为写入文件的一段段 lengths
     val writer = blockManager.getDiskWriter(blockId, outputFile, serInstance, fileBufferSize,
-      context.taskMetrics().shuffleWriteMetrics)
+      context.taskMetrics().shuffleWriteMetrics)   // 从 blockManager 得到可以写入磁盘的 diskWriter
 
-    if (spills.isEmpty) {
+    if (spills.isEmpty) {   // 如果不 spill 到磁盘，那么全部在内存处理
       // Case where we only have in-memory data
       val collection = if (aggregator.isDefined) map else buffer
-      val it = collection.destructiveSortedWritablePartitionedIterator(comparator)
-      while (it.hasNext) {
+      val it = collection.destructiveSortedWritablePartitionedIterator(comparator)   // 这个迭代器不是返回数据，而是依次写入结果
+      while (it.hasNext) {   // 一个一个 partition 写入这个 outputFile
         val partitionId = it.nextPartition()
         while (it.hasNext && it.nextPartition() == partitionId) {
           it.writeNext(writer)
@@ -701,9 +702,9 @@ private[spark] class ExternalSorter[K, V, C](
         val segment = writer.commitAndGet()
         lengths(partitionId) = segment.length
       }
-    } else {
+    } else {  // 如果 spill 到磁盘，那么需要归并排序
       // We must perform merge-sort; get an iterator by partition and write everything directly.
-      for ((id, elements) <- this.partitionedIterator) {
+      for ((id, elements) <- this.partitionedIterator) {   // TODO: 这个逻辑到底是什么
         if (elements.hasNext) {
           for (elem <- elements) {
             writer.write(elem._1, elem._2)

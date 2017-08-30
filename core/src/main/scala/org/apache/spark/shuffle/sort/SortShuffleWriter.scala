@@ -59,26 +59,27 @@ private[spark] class SortShuffleWriter[K, V, C](
     sorter = if (dep.mapSideCombine) {
       require(dep.aggregator.isDefined, "Map-side combine without Aggregator specified!")
       new ExternalSorter[K, V, C](
-        context, dep.aggregator, Some(dep.partitioner), dep.keyOrdering, dep.serializer)
+        context, dep.aggregator, Some(dep.partitioner), dep.keyOrdering, dep.serializer)    // combine 的话需要排序才可以快速
     } else {
       // In this case we pass neither an aggregator nor an ordering to the sorter, because we don't
       // care whether the keys get sorted in each partition; that will be done on the reduce side
       // if the operation being run is sortByKey.
-      new ExternalSorter[K, V, V](   // 如果没有指定 aggregator，那么 V 和 C 是相等的
+      new ExternalSorter[K, V, V](   // 如果没有指定 aggregator，那么 V 和 C 是相等的。传入参数构建所需的 ExternalSorter
         context, aggregator = None, Some(dep.partitioner), ordering = None, dep.serializer)
     }
-    sorter.insertAll(records)  // TODO: 这是写入磁盘了吗？
+    sorter.insertAll(records)  // 这是在排序
 
     // Don't bother including the time to open the merged output file in the shuffle write time,
     // because it just opens a single file, so is typically too fast to measure accurately
     // (see SPARK-3570).
+    // 获取临时数据文件，准备写入了
     val output = shuffleBlockResolver.getDataFile(dep.shuffleId, mapId)
-    val tmp = Utils.tempFileWith(output)
+    val tmp = Utils.tempFileWith(output)  // 先创建一个临时文件
     try {
-      val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)
-      val partitionLengths = sorter.writePartitionedFile(blockId, tmp)
-      shuffleBlockResolver.writeIndexFileAndCommit(dep.shuffleId, mapId, partitionLengths, tmp)
-      mapStatus = MapStatus(blockManager.shuffleServerId, partitionLengths)
+      val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)   // 获取文件名 blockId
+      val partitionLengths = sorter.writePartitionedFile(blockId, tmp)    // 让 sorter 开始写临时文件，这是核心的部分
+      shuffleBlockResolver.writeIndexFileAndCommit(dep.shuffleId, mapId, partitionLengths, tmp)    // 然后把临时文件 commit
+      mapStatus = MapStatus(blockManager.shuffleServerId, partitionLengths)   // 根据结果返回 MapStatus，这就完成了一次 ShuffleMapTask. 参数含义是 loc: BlockManagerId, uncompressedSizes: Array[Long]) TODO: shuffleServerId 是哪里赋值的
     } finally {
       if (tmp.exists() && !tmp.delete()) {
         logError(s"Error while deleting temp file ${tmp.getAbsolutePath}")

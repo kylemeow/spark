@@ -30,14 +30,14 @@ import org.apache.spark.util.collection.ExternalAppendOnlyMap
  */
 @DeveloperApi
 case class Aggregator[K, V, C] (
-    createCombiner: V => C,
-    mergeValue: (C, V) => C,
-    mergeCombiners: (C, C) => C) {
+    createCombiner: V => C,   // combiner 的作用就是把 V => C
+    mergeValue: (C, V) => C,  // merge 的作用是把新的 value 加到 C 中
+    mergeCombiners: (C, C) => C) {  // mergeCombiners 是合并两个 C
 
   def combineValuesByKey(
       iter: Iterator[_ <: Product2[K, V]],
       context: TaskContext): Iterator[(K, C)] = {
-    val combiners = new ExternalAppendOnlyMap[K, V, C](createCombiner, mergeValue, mergeCombiners)
+    val combiners = new ExternalAppendOnlyMap[K, V, C](createCombiner, mergeValue, mergeCombiners)   // An append-only map that spills sorted content to disk when there is insufficient space for it to grow.
     combiners.insertAll(iter)
     updateMetrics(context, combiners)
     combiners.iterator
@@ -46,7 +46,7 @@ case class Aggregator[K, V, C] (
   def combineCombinersByKey(
       iter: Iterator[_ <: Product2[K, C]],
       context: TaskContext): Iterator[(K, C)] = {
-    val combiners = new ExternalAppendOnlyMap[K, C, C](identity, mergeCombiners, mergeCombiners)
+    val combiners = new ExternalAppendOnlyMap[K, C, C](identity, mergeCombiners, mergeCombiners)   // 把 combiner 当做 value
     combiners.insertAll(iter)
     updateMetrics(context, combiners)
     combiners.iterator
