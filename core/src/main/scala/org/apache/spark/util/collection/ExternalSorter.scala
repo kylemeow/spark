@@ -697,12 +697,12 @@ private[spark] class ExternalSorter[K, V, C](
       while (it.hasNext) {   // 一个一个 partition 写入这个 outputFile
         val partitionId = it.nextPartition()
         while (it.hasNext && it.nextPartition() == partitionId) {
-          it.writeNext(writer)
+          it.writeNext(writer)   // 在这里写入磁盘
         }
         val segment = writer.commitAndGet()
         lengths(partitionId) = segment.length
       }
-    } else {  // 如果 spill 到磁盘，那么需要归并排序
+    } else {  // 如果 spill 到磁盘，那么需要归并排序，然后直接写磁盘
       // We must perform merge-sort; get an iterator by partition and write everything directly.
       for ((id, elements) <- this.partitionedIterator) {   // TODO: 这个逻辑到底是什么
         if (elements.hasNext) {

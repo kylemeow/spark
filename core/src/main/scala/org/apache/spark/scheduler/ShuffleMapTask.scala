@@ -56,19 +56,18 @@ import org.apache.spark.shuffle.ShuffleWriter
 
 // ShuffleMapTask 由 DAGScheduler 调用
 private[spark] class ShuffleMapTask(
-    stageId: Int,   // 任务所属的 stageiD
+    stageId: Int,   // 任务所属的 stageId
     stageAttemptId: Int,
-    taskBinary: Broadcast[Array[Byte]],   // 这里面保存着 RDD 和 ShuffleDependency 序列化后的广播版本
-    partition: Partition,
+    taskBinary: Broadcast[Array[Byte]],   // 这里面保存着 RDD 和 ShuffleDependency 序列化后的广播版本。一个 stage 里面的各个 task 都能收到
+    partition: Partition,   // 当前 ShuffleMapTask 处理的是哪个 partition
     @transient private var locs: Seq[TaskLocation],
     metrics: TaskMetrics,    // 统计消耗时间、内存、CPU 占用等一些信息
     localProperties: Properties,    // 用户在 Driver 端设置的一些属性，是 thread-local 的
 
-    jobId: Option[Int] = None,    // None 和 Some 对应 Option；而 Nil 是 List 的，不要混淆
+    jobId: Option[Int] = None,      // None 和 Some 对应 Option；而 Nil 是 List 的，不要混淆。Job 是分为多个 stage 的，因此是个大概念
     appId: Option[String] = None,
     appAttemptId: Option[String] = None)
-  extends Task[MapStatus](stageId, stageAttemptId, partition.index, metrics, localProperties, jobId,
-    appId, appAttemptId)
+  extends Task[MapStatus](stageId, stageAttemptId, partition.index, metrics, localProperties, jobId, appId, appAttemptId)
   with Logging {
 
   /** A constructor used only in TEST suites. This does not require passing in an RDD. */
@@ -80,7 +79,7 @@ private[spark] class ShuffleMapTask(
     if (locs == null) Nil else locs.toSet.toSeq   // Nil 可以放心地用来表示 List/Seq 的空元素
   }
 
-  // 用来启动任务的核心函数：由 Scheduler 调用 runTask，返回值 MapStatus 会返回给 Scheduler，然后传给 reduce 部分
+  // 用来启动任务的核心函数：由 Scheduler 调用 runTask，shuffle write 以后返回值 MapStatus 会返回给 Scheduler，然后传给 reduce 部分
   override def runTask(context: TaskContext): MapStatus = {
     // 统计时间所需的相关变量，以后 taskMetrics 用得到
     val threadMXBean = ManagementFactory.getThreadMXBean
@@ -101,10 +100,10 @@ private[spark] class ShuffleMapTask(
     } else 0L
 
     // 重点在这里，这里从 shuffleManager 中获取一个 ShuffleWriter 然后写入 rdd，之后 ShuffledRDD 同样通过 shuffleManager 获取一个 Reader 来读取数据
-    var writer: ShuffleWriter[Any, Any] = null   // TODO: 注意 [Any, Any] 和 [_, _] 的区别
+    var writer: ShuffleWriter[Any, Any] = null   // TODO: 注意 [Any, Any] 和 [_, _] 的区别，对于 covariant 和 invariant 等不同
     try {
       val manager = SparkEnv.get.shuffleManager   // 先得到 ShuffleManager（之前分为 Hash 和 Sort，现在已经合并），再得到 writer 用来写数据（map 阶段是 writer 写数据，reduce 阶段是 reader 读数据）
-      writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)   // TODO: 定义是 mapId，这里怎么是 partitionId 呢？都是 Int 数字，也许这里相等？这个 partitionId 和下面的 partition 对象的联系？
+      writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)   // TODO: 定义是 mapId，这里怎么传入 Task 类的 partitionId 呢？也许这里相等？
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])   // taskContext 里面可以更新一些 Metrics 统计信息等等
       writer.stop(success = true).get   // 关闭 writer，并告知它写入成功，得知 MapStatus：Result returned by a ShuffleMapTask to a scheduler. Includes the block manager address that the task ran on as well as the sizes of outputs for each reducer, for passing on to the reduce tasks.
     } catch {

@@ -73,7 +73,7 @@ private[spark] class SortShuffleWriter[K, V, C](
     // because it just opens a single file, so is typically too fast to measure accurately
     // (see SPARK-3570).
     // 获取临时数据文件，准备写入了
-    val output = shuffleBlockResolver.getDataFile(dep.shuffleId, mapId)
+    val output = shuffleBlockResolver.getDataFile(dep.shuffleId, mapId)  // 只是得到个文件名而已
     val tmp = Utils.tempFileWith(output)  // 先创建一个临时文件
     try {
       val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)   // 获取文件名 blockId

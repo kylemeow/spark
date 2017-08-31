@@ -121,11 +121,11 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   }
 
   @Override
-  public void write(Iterator<Product2<K, V>> records) throws IOException {
+  public void write(Iterator<Product2<K, V>> records) throws IOException {    // Records 就是 RDD 的 iterator
     assert (partitionWriters == null);
     if (!records.hasNext()) {
       partitionLengths = new long[numPartitions];
-      shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, null);
+      shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, null);    // 写入文件。不需要 sort 之类的
       mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
       return;
     }

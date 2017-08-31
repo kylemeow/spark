@@ -119,7 +119,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       endPartition: Int,
       context: TaskContext): ShuffleReader[K, C] = {   // TaskContext 里面的 stageId 和 partitionId 很有用，用来区分当前计算的是哪个分区；而 ShuffleHandle 里面有 shuffleId、numMaps 等信息
     new BlockStoreShuffleReader(
-      handle.asInstanceOf[BaseShuffleHandle[K, _, C]], startPartition, endPartition, context)
+      handle.asInstanceOf[BaseShuffleHandle[K, _, C]], startPartition, endPartition, context)    // Writer 有很多不同的 handle，这里 Reader 将其一视同仁？
   }
 
   /** Get a writer for a given partition. Called on executors by map tasks. （ShuffleTaskMap#runTask）*/
