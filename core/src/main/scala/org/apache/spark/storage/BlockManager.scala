@@ -870,7 +870,7 @@ private[spark] class BlockManager(
 
     val putBlockInfo = {
       val newInfo = new BlockInfo(level, classTag, tellMaster)
-      if (blockInfoManager.lockNewBlockForWriting(blockId, newInfo)) {
+      if (blockInfoManager.lockNewBlockForWriting(blockId, newInfo)) {    // 需要 lock 一个 block 用来写入，不然会出现同步问题
         newInfo
       } else {
         logWarning(s"Block $blockId already exists on this machine; not re-adding it")
